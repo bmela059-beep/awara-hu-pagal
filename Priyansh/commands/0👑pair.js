@@ -1,195 +1,138 @@
-const axios = require("axios");
-const fs = require("fs-extra");
-const path = require("path");
-
 module.exports.config = {
   name: "pair",
-  version: "1.0.0", 
+  version: "4.4.0",
   hasPermssion: 0,
-  credits: "D-Jukie (Modified by RDX)",
-  description: "Pairing - Find your soulmate",
-  commandCategory: "Love", 
-  usages: "pair [@mention optional]", 
-  cooldowns: 0
-};
-
-const cacheDir = path.join(__dirname, "cache");
-
-const maleNames = ["ali", "ahmed", "muhammad", "hassan", "hussain", "sardar", "rdx", "usman", "bilal", "hamza", "asad", "zain", "fahad", "faisal", "imran", "kamran", "adnan", "arslan", "waqas", "waseem", "irfan", "junaid", "khalid", "nadeem", "naveed", "omer", "qasim", "rizwan", "sajid", "salman", "shahid", "tariq", "umar", "yasir", "zahid"];
-const femaleNames = ["fatima", "ayesha", "maria", "sana", "hira", "zara", "maryam", "khadija", "sara", "amina", "bushra", "farah", "iqra", "javeria", "kinza", "laiba", "maham", "nadia", "rabia", "saima", "tahira", "uzma", "zainab", "anam", "asma", "dua", "esha", "fiza", "huma", "iram"];
-
-function detectGender(name) {
-  if (!name) return "unknown";
-  const lowerName = name.toLowerCase();
-  if (femaleNames.some(n => lowerName.includes(n))) return "female";
-  if (maleNames.some(n => lowerName.includes(n))) return "male";
-  return "unknown";
-}
-
-async function getThreadMembers(api, threadID) {
-  return new Promise((resolve) => {
-    api.getThreadInfo(threadID, (err, info) => {
-      if (err) return resolve([]);
-      resolve(info.participantIDs || []);
-    });
-  });
-}
-
-async function getUserInfo(api, uid) {
-  return new Promise((resolve) => {
-    api.getUserInfo(uid, (err, info) => {
-      if (err) return resolve({});
-      resolve(info[uid] || {});
-    });
-  });
-}
-
-function isValidName(name) {
-  if (!name || name.trim() === '') return false;
-  const lower = name.toLowerCase();
-  if (lower === 'facebook' || lower === 'facebook user' || lower.includes('facebook user')) return false;
-  if (lower === 'unknown' || lower === 'user') return false;
-  return true;
-}
-
-async function getProperName(api, uid, Users) {
-  try {
-    if (Users && Users.getNameUser) {
-      const name = await Users.getNameUser(uid);
-      if (isValidName(name)) return name;
-    }
-    const info = await getUserInfo(api, uid);
-    if (isValidName(info.name)) return info.name;
-    if (isValidName(info.firstName)) return info.firstName;
-    if (isValidName(info.alternateName)) return info.alternateName;
-    return 'Jaan';
-  } catch (e) {
-    return 'Jaan';
-  }
-}
-
-async function downloadImage(url, filePath) {
-  try {
-    const response = await axios.get(url, { 
-      responseType: "arraybuffer",
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    fs.writeFileSync(filePath, Buffer.from(response.data));
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-function cleanupFiles(...files) {
-  for (const file of files) {
-    try {
-      if (fs.existsSync(file)) {
-        fs.unlinkSync(file);
-      }
-    } catch (e) {}
-  }
-}
-
-module.exports.run = async function({ api, event, Users }) {
-  const { threadID, messageID, senderID } = event;
-  const mention = Object.keys(event.mentions || {});
-  
-  const timestamp = Date.now();
-  const avtPath = path.join(cacheDir, `avt_${timestamp}.png`);
-  const gifPath = path.join(cacheDir, `giflove_${timestamp}.gif`);
-  const avt2Path = path.join(cacheDir, `avt2_${timestamp}.png`);
-
-  try {
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
-
-    let one = senderID;
-    let two;
-    let senderInfo = await getUserInfo(api, senderID);
-    let senderGender = senderInfo.gender === 1 ? "female" : senderInfo.gender === 2 ? "male" : detectGender(senderInfo.name || "");
-
-    if (mention[0]) {
-      two = mention[0];
-    } else {
-      const members = await getThreadMembers(api, threadID);
-      const botID = api.getCurrentUserID();
-      const filteredMembers = members.filter(m => m !== senderID && m !== botID);
-
-      if (filteredMembers.length === 0) {
-        return api.sendMessage("┏━•❃°•°❀°•°❃•━┓\n\n❌ 𝐍𝐨 𝐦𝐞𝐦𝐛𝐞𝐫𝐬 𝐟𝐨𝐮𝐧𝐝 𝐭𝐨 𝐩𝐚𝐢𝐫!\n\n┗━•❃°•°❀°•°❃•━┛", threadID, messageID);
-      }
-
-      let oppositeGenderMembers = [];
-      const checkLimit = Math.min(filteredMembers.length, 30);
-      
-      for (let i = 0; i < checkLimit; i++) {
-        const uid = filteredMembers[i];
-        try {
-          const info = await getUserInfo(api, uid);
-          const memberGender = info.gender === 1 ? "female" : info.gender === 2 ? "male" : detectGender(info.name || "");
-          
-          if (senderGender === "male" && memberGender === "female") {
-            oppositeGenderMembers.push(uid);
-          } else if (senderGender === "female" && memberGender === "male") {
-            oppositeGenderMembers.push(uid);
-          } else if (senderGender === "unknown" || memberGender === "unknown") {
-            oppositeGenderMembers.push(uid);
-          }
-        } catch (e) {
-          oppositeGenderMembers.push(uid);
-        }
-      }
-
-      if (oppositeGenderMembers.length === 0) {
-        oppositeGenderMembers = filteredMembers;
-      }
-
-      two = oppositeGenderMembers[Math.floor(Math.random() * oppositeGenderMembers.length)];
-    }
-
-    var tle = Math.floor(Math.random() * 101);
-    var namee = await getProperName(api, senderID, Users);
-    var name = await getProperName(api, two, Users);
-
-    var arraytag = [];
-    arraytag.push({id: senderID, tag: namee});
-    arraytag.push({id: two, tag: name});
-
-    const avatar1Url = `https://graph.facebook.com/${senderID}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
-    const avatar2Url = `https://graph.facebook.com/${two}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
-    const gifUrl = `https://i.ibb.co/wC2JJBb/trai-tim-lap-lanh.gif`;
-
-    await Promise.all([
-      downloadImage(avatar1Url, avtPath),
-      downloadImage(gifUrl, gifPath),
-      downloadImage(avatar2Url, avt2Path)
-    ]);
-
-    var imglove = [];
-    if (fs.existsSync(avtPath)) imglove.push(fs.createReadStream(avtPath));
-    if (fs.existsSync(gifPath)) imglove.push(fs.createReadStream(gifPath));
-    if (fs.existsSync(avt2Path)) imglove.push(fs.createReadStream(avt2Path));
-
-    var msg = {
-      body: ` ✧•❁𝐘𝐨𝐮𝐫 𝐋𝐨𝐯𝐞❁•✧\n\n╔═══❖••° °••❖═══╗\n\n   𝐒𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥 𝐏𝐚𝐢𝐫𝐢𝐧𝐠\n\n╚═══❖••° °••❖═══╝💕${namee}💕${name}💕${tle}%`,
-      mentions: arraytag,
-      attachment: imglove.length > 0 ? imglove : undefined
-    };
-
-    return api.sendMessage(msg, threadID, () => {
-      setTimeout(() => {
-        cleanupFiles(avtPath, gifPath, avt2Path);
-      }, 3000);
-    }, messageID);
-
-  } catch (error) {
-    console.error("Pair command error:", error);
-    cleanupFiles(avtPath, gifPath, avt2Path);
-    return api.sendMessage("┏━•❃°•°❀°•°❃•━┓\n\n❌ 𝐄𝐫𝐫𝐨𝐫 𝐜𝐫𝐞𝐚𝐭𝐢𝐧𝐠 𝐩𝐚𝐢𝐫!\n\n┗━•❃°•°❀°•°❃•━┛", threadID, messageID);
+  credits: "virat saini",
+  description: "Pair DP (Only DP with background image)",
+  usePrefix: true,
+  commandCategory: "PAIR 2",
+  usages: "[reply | mention | random]",
+  cooldowns: 5,
+  dependencies: {
+    "axios": "",
+    "fs-extra": "",
+    "canvas": ""
   }
 };
+
+module.exports.run = async function ({ api, event, Users }) {
+  const { createCanvas, loadImage } = require("canvas");
+  const fs = require("fs-extra");
+  const axios = require("axios");
+
+  const cache = __dirname + "/cache/";
+  if (!fs.existsSync(cache)) fs.mkdirSync(cache, { recursive: true });
+
+  const outPath = cache + "pair.png";
+  const a1 = cache + "a1.png";
+  const a2 = cache + "a2.png";
+  const bgPath = cache + "bg.jpg";
+
+  const id1 = event.senderID;
+  const name1 = await Users.getNameUser(id1);
+  let id2;
+
+  if (event.messageReply?.senderID) {
+    id2 = event.messageReply.senderID;
+  } else if (Object.keys(event.mentions || {}).length === 1) {
+    id2 = Object.keys(event.mentions)[0];
+  } else {
+    const info = await api.getThreadInfo(event.threadID);
+    const mem = info.participantIDs.filter(
+      i => i !== id1 && i !== api.getCurrentUserID()
+    );
+    id2 = mem[Math.floor(Math.random() * mem.length)];
+  }
+
+  const name2 = await Users.getNameUser(id2);
+
+  const token = "6628568379|c1e620fa708a1d5696fb991c1bde5662";
+
+  // ===== AVATARS =====
+  const av1 = await axios.get(
+    `https://graph.facebook.com/${id1}/picture?type=large&access_token=${token}`,
+    { responseType: "arraybuffer" }
+  );
+  fs.writeFileSync(a1, av1.data);
+
+  const av2 = await axios.get(
+    `https://graph.facebook.com/${id2}/picture?type=large&access_token=${token}`,
+    { responseType: "arraybuffer" }
+  );
+  fs.writeFileSync(a2, av2.data);
+
+  // ===== BACKGROUND IMAGE =====
+  const bgImg = await axios.get(
+    "https://i.ibb.co/Sw7JN4q8/fb3bb0ed54c5.jpg",
+    { responseType: "arraybuffer" }
+  );
+  fs.writeFileSync(bgPath, bgImg.data);
+
+  // ===== CANVAS =====
+  const W = 1920;
+  const H = 1080;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+
+  const bg = await loadImage(bgPath);
+  ctx.drawImage(bg, 0, 0, W, H);
+
+  const img1 = await loadImage(a1);
+  const img2 = await loadImage(a2);
+
+  // 🔒 FIXED POSITION (NO y PROBLEM)
+  const r = 220;
+  const leftX = 480;
+  const rightX = 1440;
+  const fixedY = 540;
+
+  drawCircle(ctx, img1, leftX, fixedY, r);
+  drawCircle(ctx, img2, rightX, fixedY, r);
+
+  ring(ctx, leftX, fixedY, r + 10);
+  ring(ctx, rightX, fixedY, r + 10);
+
+  fs.writeFileSync(outPath, canvas.toBuffer("image/png"));
+
+  fs.unlinkSync(a1);
+  fs.unlinkSync(a2);
+  fs.unlinkSync(bgPath);
+
+  return api.sendMessage(
+    {
+      body: `✧•❁ 𝐏𝐚𝐢𝐫........❁•✧
+
+╔═══❖••° °••❖═══╗
+
+   𝐒𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥 𝐏𝐚𝐢𝐫𝐢𝐧𝐠
+
+╚═══❖••° °••❖═══╝
+
+  ${name1}❤️${name2}`,
+      mentions: [{ id: id2, tag: name2 }],
+      attachment: fs.createReadStream(outPath)
+    },
+    event.threadID,
+    () => fs.unlinkSync(outPath),
+    event.messageID
+  );
+};
+
+// ===== FUNCTIONS =====
+function drawCircle(ctx, img, x, y, r) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+}
+
+function ring(ctx, x, y, r) {
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+}
